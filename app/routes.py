@@ -4,16 +4,20 @@ matplotlib.use('Agg')
 from flask import request, jsonify, render_template, render_template_string, session, redirect, url_for
 from app import db, bcrypt
 from app.models import User, Expense, Income, Budget, User
-from datetime import datetime
+from datetime import datetime, timedelta
 from sqlalchemy import func
 
 from app.visuals import plot_category_expenses
 from collections import defaultdict
 
-
 from io import BytesIO
 import base64
 import matplotlib.pyplot as plt
+
+
+from sklearn.linear_model import LinearRegression
+import numpy as np
+
 
 def register_routes(app):
     @app.route("/")
@@ -396,3 +400,68 @@ def register_routes(app):
             line_img=line_img,
             bar_img=bar_img
         )
+    
+    # ----------------- Threshold 80% crossed notification -----------------
+    @app.route('/check-budgets', methods=['GET'])
+    def check_budgets():
+        check_budget_thresholds()
+        return {"message": "Budget thresholds checked. Alerts printed to console."}, 200
+    
+    def check_budget_thresholds():
+        users = User.query.all()
+        now = datetime.utcnow()
+        start_of_month = datetime(now.year, now.month, 1)
+
+        for user in users:
+            budgets = Budget.query.filter_by(user_id=user.id).all()
+            for b in budgets:
+                spent = db.session.query(db.func.sum(Expense.amount)) \
+                    .filter(
+                        Expense.user_id == user.id,
+                        Expense.category == b.category,
+                        Expense.date >= start_of_month
+                    ).scalar() or 0
+
+                threshold = 0.8 * b.monthly_limit
+                if spent >= threshold:
+                    print(f"[ALERT] {user.username} has reached 80% of their {b.category} budget: Spent {spent}, Limit {b.monthly_limit}")
+                    
+    # ----------------- For ML -----------------
+    @app.route('/predict/<int:user_id>', methods=['GET'])
+    def predict_expenses(user_id):
+        now = datetime.utcnow()
+        start_of_data = datetime(now.year, now.month - 3, 1)  # Use last 3 months
+
+        # Fetch historical data
+        expenses = db.session.query(Expense).filter(
+            Expense.user_id == user_id,
+            Expense.date >= start_of_data
+        ).all()
+
+        if not expenses:
+            return jsonify({"error": "Not enough data to predict"}), 400
+
+        # Prepare data
+        data = {}
+        for e in expenses:
+            key = e.category
+            if key not in data:
+                data[key] = []
+            day_of_month = e.date.day
+            data[key].append((day_of_month, e.amount))
+
+        predictions = {}
+        for category, values in data.items():
+            X = np.array([v[0] for v in values]).reshape(-1, 1)
+            y = np.array([v[1] for v in values])
+            model = LinearRegression()
+            model.fit(X, y)
+            # Predict for next month's 1st day
+            next_month_day = 1
+            predicted_amount = model.predict(np.array([[next_month_day]]))[0]
+            predictions[category] = round(predicted_amount, 2)
+
+        return jsonify({
+            "user_id": user_id,
+            "predicted_expenses": predictions
+        })
