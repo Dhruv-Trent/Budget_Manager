@@ -19,6 +19,16 @@ from sklearn.linear_model import LinearRegression
 import numpy as np
 
 
+import pandas as pd
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+from flask import send_file, current_app
+import os
+from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
+from reportlab.lib.utils import ImageReader
+
+
+
 def register_routes(app):
     @app.route("/")
     def home():
@@ -465,3 +475,177 @@ def register_routes(app):
             "user_id": user_id,
             "predicted_expenses": predictions
         })
+    
+    # ----------------- Export to Excel -----------------
+    @app.route('/export/excel/<int:user_id>', methods=['GET'])
+    def export_excel(user_id):
+        # Get data
+        incomes = Income.query.filter_by(user_id=user_id).all()
+        expenses = Expense.query.filter_by(user_id=user_id).all()
+        budgets = Budget.query.filter_by(user_id=user_id).all()
+
+        # Convert to DataFrames
+        income_df = pd.DataFrame([{
+            "amount": i.amount,
+            "date": str(i.date),
+            "source": i.source
+        } for i in incomes])
+
+        expense_df = pd.DataFrame([{
+            "amount": e.amount,
+            "date": str(e.date),
+            "category": e.category
+        } for e in expenses])
+
+        budget_df = pd.DataFrame([{
+            "category": b.category,
+            "monthly_limit": b.monthly_limit
+        } for b in budgets])
+
+        # Totals
+        total_income = sum(income_df["amount"]) if not income_df.empty else 0
+        total_expenses = sum(expense_df["amount"]) if not expense_df.empty else 0
+
+        # Absolute path
+        file_path = os.path.join(current_app.root_path, "instance", f"user_{user_id}_report.xlsx")
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+
+        # Save with charts (xlsxwriter engine)
+        with pd.ExcelWriter(file_path, engine="xlsxwriter") as writer:
+            if not income_df.empty:
+                income_df.to_excel(writer, sheet_name="Income", index=False)
+            if not expense_df.empty:
+                expense_df.to_excel(writer, sheet_name="Expenses", index=False)
+            if not budget_df.empty:
+                budget_df.to_excel(writer, sheet_name="Budgets", index=False)
+
+            workbook  = writer.book
+            worksheet = workbook.add_worksheet("Charts")
+
+            # -------- Bar Chart: Total Income vs Expenses --------
+            bar_chart = workbook.add_chart({'type': 'column'})
+
+            bar_chart.add_series({
+                'name': "Income",
+                'categories': ['Charts', 1, 0, 1, 0],   # category label in worksheet
+                'values':     ['Charts', 1, 1, 1, 1],   # values column
+            })
+            bar_chart.add_series({
+                'name': "Expenses",
+                'categories': ['Charts', 2, 0, 2, 0],
+                'values':     ['Charts', 2, 1, 2, 1],
+            })
+
+            bar_chart.set_title({'name': "Total Income vs Expenses"})
+            bar_chart.set_y_axis({'name': "Amount"})
+
+            # Write data for bar chart in worksheet
+            worksheet.write(0, 0, "Type")
+            worksheet.write(0, 1, "Amount")
+            worksheet.write(1, 0, "Income")
+            worksheet.write(1, 1, total_income)
+            worksheet.write(2, 0, "Expenses")
+            worksheet.write(2, 1, total_expenses)
+
+            worksheet.insert_chart("D2", bar_chart)
+
+            # -------- Pie Chart: Spending by Category --------
+            if not expense_df.empty:
+                # Aggregate by category
+                category_totals = expense_df.groupby("category")["amount"].sum().reset_index()
+
+                # Write category data for pie chart
+                worksheet.write(5, 0, "Category")
+                worksheet.write(5, 1, "Amount")
+                for idx, row in category_totals.iterrows():
+                    worksheet.write(6 + idx, 0, row["category"])
+                    worksheet.write(6 + idx, 1, row["amount"])
+
+                pie_chart = workbook.add_chart({'type': 'pie'})
+                pie_chart.add_series({
+                    'name': "Spending by Category",
+                    'categories': ['Charts', 6, 0, 6 + len(category_totals) - 1, 0],
+                    'values':     ['Charts', 6, 1, 6 + len(category_totals) - 1, 1],
+                })
+                pie_chart.set_title({'name': "Spending by Category"})
+
+                worksheet.insert_chart("D20", pie_chart)
+
+        return send_file(file_path, as_attachment=True)
+
+
+    # ----------------- Export to PDF -----------------
+    @app.route('/export/pdf/<int:user_id>', methods=['GET'])
+    def export_pdf(user_id):
+        # Get totals
+        total_income = db.session.query(func.sum(Income.amount)).filter_by(user_id=user_id).scalar() or 0
+        total_expenses = db.session.query(func.sum(Expense.amount)).filter_by(user_id=user_id).scalar() or 0
+        balance = total_income - total_expenses
+
+        # Absolute path
+        file_path = os.path.join(current_app.root_path, "instance", f"user_{user_id}_report.pdf")
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+
+        c = canvas.Canvas(file_path, pagesize=letter)
+        width, height = letter
+
+        # Title
+        c.setFont("Helvetica-Bold", 16)
+        c.drawString(200, height - 50, f"User {user_id} - Financial Report")
+
+        # Summary
+        c.setFont("Helvetica", 12)
+        c.drawString(50, height - 100, f"Total Income: {total_income}")
+        c.drawString(50, height - 120, f"Total Expenses: {total_expenses}")
+        c.drawString(50, height - 140, f"Balance: {balance}")
+
+        # Budgets
+        budgets = Budget.query.filter_by(user_id=user_id).all()
+        c.drawString(50, height - 180, "Budgets:")
+        y = height - 200
+        for b in budgets:
+            c.drawString(70, y, f"{b.category}: Limit {b.monthly_limit}")
+            y -= 20
+
+        # Expenses
+        expenses = Expense.query.filter_by(user_id=user_id).limit(10).all()
+        c.drawString(50, y - 20, "Recent Expenses:")
+        y -= 40
+        for e in expenses:
+            c.drawString(70, y, f"{e.category} - {e.amount} on {e.date}")
+            y -= 20
+
+        # ----------------- Charts -----------------
+        # 1. Pie chart: Spending by category
+        category_data = db.session.query(
+            Expense.category,
+            func.sum(Expense.amount)
+        ).filter(Expense.user_id==user_id).group_by(Expense.category).all()
+
+        if category_data:
+            categories = [c[0] for c in category_data]
+            amounts = [c[1] for c in category_data]
+
+            fig, ax = plt.subplots(figsize=(4,4))
+            ax.pie(amounts, labels=categories, autopct='%1.1f%%')
+            ax.set_title("Spending by Category")
+            buf = BytesIO()
+            plt.savefig(buf, format='png')
+            plt.close(fig)
+            buf.seek(0)
+            pie_img = ImageReader(buf)
+            c.drawImage(pie_img, 50, y - 250, width=300, height=200)  # adjust position
+
+        # 2. Bar chart: Income vs Expenses
+        fig2, ax2 = plt.subplots(figsize=(4,3))
+        ax2.bar(["Income", "Expenses"], [total_income, total_expenses], color=["green", "red"])
+        ax2.set_title("Income vs Expenses")
+        buf2 = BytesIO()
+        plt.savefig(buf2, format='png')
+        plt.close(fig2)
+        buf2.seek(0)
+        bar_img = ImageReader(buf2)
+        c.drawImage(bar_img, 50, y - 500, width=300, height=200)
+
+        c.save()
+        return send_file(file_path, as_attachment=True)
