@@ -27,12 +27,25 @@ import os
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from reportlab.lib.utils import ImageReader
 
+from flask_login import current_user
 
 
 def register_routes(app):
+    @app.context_processor
+    def inject_user():
+        return dict(current_user=current_user)
+    
+    @app.route("/test")
+    def test_page():
+        return render_template("base.html", title="Test Page")
+    
+    @app.route("/dashboard")
+    def dashboard():
+        return render_template("dashboard.html", title="Dashboard")
+    
     @app.route("/")
     def home():
-        return "Budget Manager Backend Running!"
+        return "Budget Manager Backend Runnigggggggng!"
     
     # ----------------- User Auth -----------------
     @app.route('/register', methods=['POST'])
@@ -477,8 +490,13 @@ def register_routes(app):
         })
     
     # ----------------- Export to Excel -----------------
-    @app.route('/export/excel/<int:user_id>', methods=['GET'])
-    def export_excel(user_id):
+    @app.route('/export/excel', methods=['GET'])
+    def export_excel():
+        # ✅ Require login
+        if 'user_id' not in session:
+            return jsonify({"error": "Not logged in"}), 401
+
+        user_id = session['user_id']  # ✅ Use session instead of URL
         # Get data
         incomes = Income.query.filter_by(user_id=user_id).all()
         expenses = Expense.query.filter_by(user_id=user_id).all()
@@ -575,8 +593,13 @@ def register_routes(app):
 
 
     # ----------------- Export to PDF -----------------
-    @app.route('/export/pdf/<int:user_id>', methods=['GET'])
-    def export_pdf(user_id):
+    @app.route('/export/pdf', methods=['GET'])
+    def export_pdf():
+        
+        # ✅ Require login
+        if 'user_id' not in session:
+            return jsonify({"error": "Not logged in"}), 401
+        
         # Get totals
         total_income = db.session.query(func.sum(Income.amount)).filter_by(user_id=user_id).scalar() or 0
         total_expenses = db.session.query(func.sum(Expense.amount)).filter_by(user_id=user_id).scalar() or 0

@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title if title else "SmartFinance" }}</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body class="d-flex">
+
+    <!-- Sidebar -->
+    <div id="sidebar" class="bg-dark text-white p-3 vh-100 overflow-y-auto" style="width: 250px;">
+        <h4 class="mb-4 text-primary"><i class="fas fa-wallet me-2"></i> SmartFinance</h4>
+        <ul class="nav flex-column">
+            <li class="nav-item">
+                <a href="{{ url_for('dashboard') }}" class="nav-link text-white {% if title == 'Dashboard' %}active bg-secondary{% endif %}">
+                    <i class="fas fa-home me-2"></i> Dashboard
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="{{ url_for('add_income') }}" class="nav-link text-white {% if title == 'Add Income' %}active bg-secondary{% endif %}">
+                    <i class="fas fa-plus-circle me-2"></i> Add Income
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="{{ url_for('add_expense') }}" class="nav-link text-white {% if title == 'Add Expense' %}active bg-secondary{% endif %}">
+                    <i class="fas fa-minus-circle me-2"></i> Add Expense
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="{{ url_for('reports_visual') }}" class="nav-link text-white {% if title == 'Reports' %}active bg-secondary{% endif %}">
+                    <i class="fas fa-chart-line me-2"></i> Reports
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="{{ url_for('export_pdf') }}" class="nav-link text-white {% if title == 'export_pdf' %}active bg-secondary{% endif %}">
+                    <i class="fa-solid fa-file-pdf"></i> Export PDF
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="{{ url_for('export_excel') }}" class="nav-link text-white {% if title == 'export_excel' %}active bg-secondary{% endif %}">
+                    <i class="fa-solid fa-file-excel"></i> Export Excel
+                </a>
+            </li>
+
+        </ul>
+    </div>
+
+    <!-- Main Content -->
+    <div class="flex-grow-1">
+
+        <!-- Navbar -->
+        <nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm">
+            <div class="container-fluid">
+                <!-- Brand -->
+                <a class="navbar-brand fw-bold text-primary" href="{{ url_for('dashboard') }}">
+                    <i class="fas fa-wallet me-2"></i> Budget Manager
+                </a>
+
+                <!-- Mobile toggle -->
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarAuth"
+                    aria-controls="navbarAuth" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <!-- Auth buttons -->
+                <div class="collapse navbar-collapse justify-content-end" id="navbarAuth">
+                    <div class="d-flex">
+                        {% if current_user.is_authenticated %}
+                            <span class="navbar-text text-white me-3">Welcome, {{ current_user.username }}</span>
+                            <a href="{{ url_for('logout') }}" class="btn btn-outline-danger btn-sm">
+                                <i class="fas fa-sign-out-alt"></i> Logout
+                            </a>
+                        {% else %}
+                            <a href="{{ url_for('login') }}" class="btn btn-outline-light btn-sm me-2">
+                                <i class="fas fa-sign-in-alt"></i> Login
+                            </a>
+                            <a href="{{ url_for('register') }}" class="btn btn-primary btn-sm">
+                                <i class="fas fa-user-plus"></i> Register
+                            </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Page Content -->
+        <main class="container-fluid p-4">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Custom JS -->
+    <script src="{{ url_for('static', filename='js/charts.js') }}"></script>
+</body>
+</html>

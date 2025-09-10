@@ -1,0 +1,17 @@
+body {
+    font-family: 'Inter', sans-serif;
+}
+
+/* Sidebar hover */
+#sidebar .nav-link:hover {
+    background-color: #495057;
+    border-radius: 5px;
+}
+
+/* Smooth transition */
+#sidebar {
+    transition: all 0.3s ease;
+}
+
+
+
