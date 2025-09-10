@@ -599,7 +599,7 @@ def register_routes(app):
         # ✅ Require login
         if 'user_id' not in session:
             return jsonify({"error": "Not logged in"}), 401
-        
+        user_id = session['user_id']  # ✅ Use session instead of URL
         # Get totals
         total_income = db.session.query(func.sum(Income.amount)).filter_by(user_id=user_id).scalar() or 0
         total_expenses = db.session.query(func.sum(Expense.amount)).filter_by(user_id=user_id).scalar() or 0
