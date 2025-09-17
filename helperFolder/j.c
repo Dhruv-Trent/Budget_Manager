@@ -26,10 +26,9 @@ ssize_t proc_read(struct file *file, char __user *buf, size_t count, loff_t *pos
     return len;
 }
 
-// Define file operations structure
-static const struct file_operations fops = {
-    .owner = THIS_MODULE,
-    .read = proc_read,
+// Use proc_ops for newer kernels (>= 5.6)
+static const struct proc_ops fops = {
+    .proc_read = proc_read,
 };
 
 // Function called when module is loaded
